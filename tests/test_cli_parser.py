@@ -30,6 +30,38 @@ class TestCLIParser(unittest.TestCase):
         with self.assertRaises(argparse.ArgumentTypeError):
             git_repo("https://test.test")
 
+    def test_gitlab_repo(self):
+        self.assertEqual(
+            git_repo("git@gitlab.com:myuser/project.git"),
+            "https://gitlab.com/myuser/project/",
+        )
+        self.assertEqual(
+            git_repo("https://gitlab.com/myuser/project.git"),
+            "https://gitlab.com/myuser/project/",
+        )
+        self.assertEqual(
+            git_repo("https://gitlab.com/myuser/project"),
+            "https://gitlab.com/myuser/project/",
+        )
+        with self.assertRaises(argparse.ArgumentTypeError):
+            git_repo("https://test.test")
+
+    def test_gitlab_private_repo(self):
+        self.assertEqual(
+            git_repo("git@gitlab.private.io:group/project/repo.git"),
+            "https://gitlab.private.io/group/project/repo/",
+        )
+        self.assertEqual(
+            git_repo("https://gitlab.private.io/group/project/repo.git"),
+            "https://gitlab.private.io/group/project/repo/",
+        )
+        self.assertEqual(
+            git_repo("https://gitlab.private.io/group/project/repo"),
+            "https://gitlab.private.io/group/project/repo/",
+        )
+        with self.assertRaises(argparse.ArgumentTypeError):
+            git_repo("https://gitlab.test.test")
+
     def test_abs_path(self):
         self.assertTrue(abs_path(Path("test.py").as_posix()).absolute())
 
@@ -54,6 +86,7 @@ class TestCLIParser(unittest.TestCase):
 
     def test_get_source_code_url(self):
         namespace = parse_args([])
+        namespace.is_gitlab = False
         assert namespace.get_source_code_url() == ""
 
         namespace.branch = "master"
@@ -65,6 +98,25 @@ class TestCLIParser(unittest.TestCase):
         namespace.source_code_url = "https://github.com/author/repo"
         namespace.branch = "main"
         assert namespace.get_source_code_url() == "https://github.com/author/repo/blob/main/"
+
+        namespace.source_code_url = ""
+        assert namespace.get_source_code_url() == ""
+
+    def test_get_source_code_gitlab_url(self):
+        namespace = parse_args([])
+        namespace.is_gitlab = True
+        assert namespace.get_source_code_url() == ""
+
+        namespace.branch = "master"
+        assert namespace.get_source_code_url() == ""
+
+        namespace.source_code_url = "simple"
+        assert namespace.get_source_code_url() == "simple/-/blob/master/"
+
+        namespace.source_code_url = "https://gitlab.com/project/repo"
+        namespace.branch = "main"
+        assert namespace.get_source_code_url() == "https://gitlab.com/project/repo/-/blob/main/"
+        # TODO coudl be tree if is pointing to the folder, not a source file
 
         namespace.source_code_url = ""
         assert namespace.get_source_code_url() == ""

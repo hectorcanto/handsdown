@@ -18,6 +18,7 @@ from handsdown.utils import make_title
 from handsdown.utils.import_string import ImportString
 from handsdown.utils.logger import get_logger
 from handsdown.utils.path_finder import PathFinder
+from handsdown.utils import gitlab
 
 
 class GeneratorError(Exception):
@@ -86,6 +87,14 @@ class Generator:
         self._toc_depth = toc_depth
         self._raise_errors = raise_errors
         self._encoding = encoding
+        self.is_gitlab = False
+        if self._source_code_url and "gitlab" in self._source_code_url:
+            self.is_gitlab = True
+
+        if self.is_gitlab:
+            self.INDEX_NAME = gitlab.MAIN_FILE
+            self.INDEX_TITLE = gitlab.TITLE
+            # https://docs.gitlab.com/ee/user/project/wiki/#create-the-wiki-home-page point 6
 
         # create output folder if it does not exist
         if not self._output_path.exists():
@@ -367,6 +376,8 @@ class Generator:
                 subtitle_parts.append(md_modules.subtitle)
 
             modules_link = md_modules.render_md_doc_link(self.md_index, title=self._project_name)
+            if self.is_gitlab:
+                modules_link = gitlab.clean_links(modules_link)
             subtitle_parts.append(f"Full list of {modules_link} project modules.")
             md_modules.subtitle = "\n\n".join(subtitle_parts)
 
@@ -376,10 +387,11 @@ class Generator:
                 md_document=md_modules,
                 start_level=1,
             )
+            if self.is_gitlab:
+                modules_toc_lines = [gitlab.clean_links(line) for line in modules_toc_lines]
 
             md_doc_link = md_modules.render_md_doc_link(self.md_index)
             modules_toc_lines.insert(0, md_modules.get_toc_line(md_doc_link, level=0))
-
             md_modules.toc_section = "\n".join(modules_toc_lines)
 
     def _generate_module_doc_lines(
@@ -496,8 +508,8 @@ class Generator:
 
         section_map = self._docstring_processor.build_sections(docstring)
 
-        for attrubute in record.get_documented_attribute_strings():
-            section_map.add_line_indent("Attributes", f"- {attrubute}")
+        for attribute in record.get_documented_attribute_strings():
+            section_map.add_line_indent("Attributes", f"- {attribute}")
 
         related_import_strings = module_record.get_related_import_strings(record)
         links = []
@@ -516,6 +528,8 @@ class Generator:
 
             title = related_record.title
             target_path = self._loader.get_output_path(related_module_record.source_path)
+            if self.is_gitlab and target_path.suffix in gitlab.MD_EXT:  # TODO test
+                target_path = target_path.with_suffix("")  # only removes last suffix
             link = md_document.render_doc_link(
                 title, target_path=target_path, anchor=md_document.get_anchor(title)
             )
@@ -568,7 +582,7 @@ class Generator:
             last_import_string_parts = import_string_parts
             link = md_document.render_doc_link(
                 title=module_record.title,
-                target_path=output_path,
+                target_path=output_path,  # TODO check link
                 anchor=md_document.get_anchor(module_record.title),
             )
             toc_line = md_document.get_toc_line(

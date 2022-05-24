@@ -49,6 +49,7 @@ class CLINamespace:
         self.files: List[Path] = list(files)
         self.cleanup = cleanup
         self.encoding = encoding
+        self.is_gitlab = True if "gitlab" in (source_code_url or "") else False
 
     def get_source_code_url(self) -> str:
         """
@@ -61,8 +62,10 @@ class CLINamespace:
             return ""
 
         result = self.source_code_url.rstrip("/")
-        if self.branch:
+        if self.branch and not self.is_gitlab:
             result = f"{result}/blob/{self.branch}"
+        elif self.branch and self.is_gitlab:
+            result = f"{result}/-/blob/{self.branch}"
 
         if self.source_code_path != Path():
             result = f"{result}/{self.source_code_path.as_posix()}".rstrip("/")
@@ -83,6 +86,10 @@ def git_repo(git_repo_url: str) -> str:
     """
     if not git_repo_url:
         return git_repo_url
+
+    if "gitlab" in git_repo_url:
+        return gitlab_repo(git_repo_url)
+
     https_repo_re = re.compile(r"^https://github.com/(?P<user>[^/]+)/(?P<repo>[^/]+)\.git$")
     ssh_repo_re = re.compile(r"^git@github\.com:(?P<user>[^/]+)/(?P<repo>[^/]+)\.git$")
     short_https_repo_re = re.compile(r"^https://github.com/(?P<user>[^/]+)/(?P<repo>[^/]+)/?$")
@@ -97,6 +104,37 @@ def git_repo(git_repo_url: str) -> str:
     user = match.groupdict()["user"]
     repo = match.groupdict()["repo"]
     return f"https://github.com/{user}/{repo}/"
+
+
+def gitlab_repo(git_repo_url: str):
+    """Validate `git_repo_url` to be a Gitlab repo and converts SSH urls to HTTPS.
+
+    Arguments:
+        git_repo_url -- Gitlab public or private URK or `remote.origin.url`
+
+    Returns:
+        A Gitlab https URL
+    """
+
+    https_repo_re = re.compile(
+        r"https://(?P<host>[^/]+)/(?P<project>(?:[^/]+/)+)(?P<repo>[^/]+)\.git$"
+    )
+    ssh_repo_re = re.compile(r"^git@(?P<host>[^:]+):(?P<project>(?:[^/]+/)+)(?P<repo>[^/]+)\.git$")
+    short_https_repo_re = re.compile(
+        r"^https://(?P<host>[^:]+)/(?P<project>(?:[^/]+/)+)(?P<repo>[^/]+)/?$"
+    )
+    match = https_repo_re.match(git_repo_url)
+
+    if not match:
+        match = ssh_repo_re.match(git_repo_url)
+    if not match:
+        match = short_https_repo_re.match(git_repo_url)
+    if not match:
+        raise argparse.ArgumentTypeError(f"Cannot parse Git URL {git_repo_url}")
+    host = match.groupdict()["host"]
+    project = match.groupdict()["project"]
+    repo = match.groupdict()["repo"]
+    return f"https://{host}/{project}{repo}/"
 
 
 def abs_path(path_str: str) -> Path:
@@ -216,7 +254,7 @@ def parse_args(args: Iterable[str]) -> CLINamespace:
     )
     parser.add_argument(
         "--branch",
-        help="Main branch name, extends external URL with `/blob/<branch>` (default: main)",
+        help="Main branch name, extends external URL with `[-/]blob/<branch>` (default: main)",
         default="main",
     )
     parser.add_argument(

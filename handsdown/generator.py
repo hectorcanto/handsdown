@@ -361,6 +361,8 @@ class Generator:
 
             md_index.add_toc_if_not_exists()
             md_modules_link = md_index.render_md_doc_link(self.md_modules)
+            if self.is_gitlab:
+                md_modules_link = gitlab.clean_links(md_modules_link)
             md_index.toc_section = f"{md_index.toc_section}\n  - {md_modules_link}"
 
     def generate_modules(self) -> None:
